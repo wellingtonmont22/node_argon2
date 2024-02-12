@@ -1,0 +1,1 @@
+export { default as validatePassword } from './validate-password.mjs'
