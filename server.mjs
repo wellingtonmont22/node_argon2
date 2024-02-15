@@ -9,37 +9,71 @@ const { Database } = sqlite3.verbose();
 
 const port = process.env.PORT || 3000;
 
-const db = new Database("users.db");
+const db = new Database("app.db");
+
+db.run(`CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name VARCHAR(100) NOT NULL,
+  email VARCHAR(100) UNIQUE NOT NULL,
+  password VARCHAR(100) NOT NULL
+)`);
 
 const app = express();
-app.use(express.json())
+
+app.use(express.json());
 
 app.post("/register", async (req, res) => {
-  if (!validatePassword(req.body.senha)) {
+  const {
+    name,
+    email,
+    password
+  } = req.body
+
+  if (!validatePassword(password)) {
     return res
       .status(400)
       .json({ mensagem: "A senha não atende aos requisitos mínimos." });
   }
   try {
-    const hash = await argon2.hash(req.body.senha, argon2Options);
-   
+    const hashPassword = await argon2.hash(password, argon2Options);
+
+    db.run('INSERT INTO users (name, email, password) VALUES (?, ?, ?)', [name, email, hashPassword], (err) => {
+      if (err) {
+        return res.status(500).json({ mensagem: 'Erro durante o registro.' });
+      }
+      return res.status(201).json({
+        message: "Usuário criado com sucesso.",
+      });
+    });
   } catch (err) {
-    console.log(err);
-    return res.status(500).json({ mensagem: "Erro durante o login." });
+    return res.status(500).json({ mensagem: "Erro durante o registro do usuário." });
   }
-  return await res.status(201).json({
-    message: "Usuário criado com sucesso.",
-  });
 });
 
 app.post('/login', async (req, res) => {
-   // if (!(await argon2.verify(hash, senha))) {
-    //   return res.status(401).json({ mensagem: 'Credenciais inválidas.' });
-    // }
+  const { email, password } = req.body;
 
-    return await res.status(201).json({
-      message: "Login realizado com sucesso.",
+  try {
+    db.get('SELECT * FROM users WHERE email = ?', [email], async (err, user) => {
+      if (err) {
+        return err;
+      }
+
+      if (!user) {
+        return res.status(404).json({ mensagem: 'Usuário não encontrado.' });
+      }
+
+      if (!await argon2.verify(user.password, password)) {
+        return res.status(401).json({ mensagem: 'Credenciais inválidas.' });
+      }
+
+      return res.status(200).json({
+        message: "Login realizado com sucesso.",
+      });
     });
+  } catch (error) {
+    return res.status(500).json({ mensagem: 'Erro durante o login.' });
+  }
 })
 
 app.listen(port, () => console.log(`Server is running in ${port}`));
